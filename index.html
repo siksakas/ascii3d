@@ -5,22 +5,254 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>3D ASCII</title>
   <style>
+    @font-face {
+      font-family: "BDO Grotesk";
+      src: url("assets/fonts/BDOGrotesk-Light.otf") format("opentype");
+      font-weight: 300;
+    }
+    @font-face {
+      font-family: "BDO Grotesk";
+      src: url("assets/fonts/BDOGrotesk-Regular.otf") format("opentype");
+      font-weight: 400;
+    }
+
+    :root {
+      --bg: #000;
+      --fg: #fff;
+      --muted: #8a8a8a;
+      --line: #2a2a2a;
+      --panel-w: 420px;
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; overflow: hidden; }
-    #threeCanvas { display: none; }
-    #asciiCanvas {
-      display: block;
-      position: fixed;
-      inset: 0;
-      width: 100vw;
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: "BDO Grotesk", system-ui, sans-serif;
+      font-weight: 300;
+      font-size: 14px;
+      line-height: 1.5;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body { display: flex; }
+
+    /* ---------- panel ---------- */
+    #panel {
+      width: var(--panel-w);
+      flex: 0 0 var(--panel-w);
       height: 100vh;
-      z-index: 0;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--line);
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+    #panel::-webkit-scrollbar { display: none; }
+
+    #panel header { padding: 24px 24px 20px; }
+    #panel h1 {
+      font-weight: 400;
+      font-size: 26px;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+      margin-bottom: 14px;
+    }
+    #panel header p { color: #d4d4d4; }
+
+    hr {
+      border: 0;
+      border-top: 1px solid var(--line);
+      margin: 0 24px;
+    }
+
+    #controls { padding: 20px 24px 8px; }
+
+    .group + .group {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+    .group-title {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+
+    .field { margin-bottom: 12px; }
+    .field:last-child { margin-bottom: 0; }
+    .field .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 4px;
+    }
+    .field label { color: #d4d4d4; }
+    .field .value {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+    }
+
+    /* text input */
+    input[type="text"] {
+      width: 100%;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      color: var(--fg);
+      font: 13px/1.6 "Courier New", monospace;
+      letter-spacing: 0.08em;
+      padding: 4px 0;
+      outline: none;
+      transition: border-color .15s;
+    }
+    input[type="text"]:focus { border-color: var(--fg); }
+
+    /* range slider */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 14px;
+      background: transparent;
+      cursor: pointer;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 1px;
+      background: var(--line);
+    }
+    input[type="range"]::-moz-range-track {
+      height: 1px;
+      background: var(--line);
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 9px;
+      height: 9px;
+      margin-top: -4px;
+      border-radius: 50%;
+      background: var(--fg);
+      border: 0;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--fg);
+      border: 0;
+    }
+
+    /* select */
+    .select-wrap {
+      position: relative;
+      border-bottom: 1px solid var(--line);
+    }
+    .select-wrap::after {
+      content: "↓";
+      position: absolute;
+      right: 0;
+      top: 4px;
+      color: var(--muted);
+      pointer-events: none;
+      font-size: 12px;
+    }
+    select {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      background: transparent;
+      border: 0;
+      color: var(--fg);
+      font: inherit;
+      padding: 4px 16px 4px 0;
+      outline: none;
+      cursor: pointer;
+    }
+    select option { background: #111; color: var(--fg); }
+
+    /* checkbox */
+    .field.check .row { margin-bottom: 0; cursor: pointer; }
+    input[type="checkbox"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 11px;
+      height: 11px;
+      border: 1px solid var(--muted);
+      background: transparent;
+      cursor: pointer;
+      position: relative;
+      top: 1px;
+    }
+    input[type="checkbox"]:checked { background: var(--fg); border-color: var(--fg); }
+
+    /* footer */
+    #panel footer {
+      margin-top: auto;
+      padding: 20px 24px 24px;
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      font-size: 13px;
+    }
+    #panel footer button {
+      background: none;
+      border: 0;
+      color: var(--fg);
+      font: inherit;
+      font-weight: 400;
+      cursor: pointer;
+      padding: 0;
+    }
+    #panel footer button::after { content: " →"; }
+    #panel footer button:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+    /* ---------- stage ---------- */
+    #stage {
+      flex: 1;
+      position: relative;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #threeCanvas { display: none; }
+    #asciiCanvas { display: block; position: absolute; inset: 0; }
+
+    @media (max-width: 720px) {
+      body { flex-direction: column; }
+      #panel {
+        width: 100%;
+        flex: 0 0 auto;
+        height: auto;
+        max-height: 55vh;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      #stage { height: auto; }
     }
   </style>
 </head>
 <body>
-  <canvas id="threeCanvas"></canvas>
-  <canvas id="asciiCanvas"></canvas>
+  <aside id="panel">
+    <header>
+      <h1>3D ASCII</h1>
+      <p>Renders your glb as ascii!</p>
+    </header>
+    <hr />
+    <!-- controls are generated from the schema in main.js -->
+    <div id="controls"></div>
+    <footer>
+      <button id="reset" type="button">reset defaults</button>
+    </footer>
+  </aside>
+
+  <div id="stage">
+    <canvas id="threeCanvas"></canvas>
+    <canvas id="asciiCanvas"></canvas>
+  </div>
 
   <script type="importmap">
     {
