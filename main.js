@@ -6,7 +6,7 @@
 //   #threeCanvas { display: none; }
 //   #asciiCanvas { display: block; position: absolute; inset: 0; }
 // the settings menu builds itself into an element with id "controls" (and a #reset button) — leave those out if u don't want the menu.
-// change the loader path below to load ur own model
+// change DEFAULT_MODEL below to load ur own model, or just drop a .glb onto the page / use the import button in the menu
 // you will also need an import map in your html u can copy this
 //   <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.176.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.176.0/examples/jsm/" } }</script>
 
@@ -39,9 +39,10 @@ const DEFAULTS = {
     camHeight: 4,
     camDist: 1,
     targetHeight: 3.4,
-    // scene
+    // scene — models get normalised so their biggest dimension = fitSize and they stand on y=0
     modelScale: 1,
     modelX: 0.4,
+    fitSize: 4,
     keyLight: 1.2,
     ambient: 0.8,
 };
@@ -79,14 +80,21 @@ const SCHEMA = [
         ],
     },
     {
+        title: "model",
+        fields: [
+            { key: "modelFile", label: "file", kind: "file", accept: ".glb,.gltf" },
+            { key: "fitSize", label: "fit size", kind: "range", min: 0.5, max: 12, step: 0.1, apply: applyModel },
+            { key: "modelScale", label: "model scale", kind: "range", min: 0.1, max: 4, step: 0.05, apply: applyModel },
+            { key: "modelX", label: "model x offset", kind: "range", min: -3, max: 3, step: 0.05, apply: applyModel },
+        ],
+    },
+    {
         title: "camera & motion",
         fields: [
             { key: "fov", label: "field of view", kind: "range", min: 20, max: 120, step: 1, unit: "°", apply: applyCamera },
             { key: "camDist", label: "camera distance", kind: "range", min: 0.2, max: 10, step: 0.05, apply: applyCamera },
             { key: "camHeight", label: "camera height", kind: "range", min: -2, max: 10, step: 0.05, apply: applyCamera },
             { key: "targetHeight", label: "look-at height", kind: "range", min: -2, max: 10, step: 0.05 },
-            { key: "modelScale", label: "model scale", kind: "range", min: 0.1, max: 4, step: 0.05, apply: applyModel },
-            { key: "modelX", label: "model x offset", kind: "range", min: -3, max: 3, step: 0.05, apply: applyModel },
             { key: "spinSpeed", label: "sway speed", kind: "range", min: 0, max: 5, step: 0.05 },
             { key: "spinAmount", label: "sway amount", kind: "range", min: 0, max: 3.2, step: 0.05 },
         ],
@@ -128,32 +136,87 @@ function applyLights() {
 }
 function applyModel() {
     if (!model) return;
+    // model is a wrapper group: the loaded scene sits inside, already centred + scaled to fitSize
+    const inner = model.children[0];
+    const k = S.fitSize / model.userData.maxDim;
+    inner.scale.setScalar(k);
+    inner.position.copy(model.userData.baseOffset).multiplyScalar(k);
     model.scale.setScalar(S.modelScale);
     model.position.set(S.modelX, 0, 0.3);
 }
 applyCamera();
 
+// CHANGE THIS to ur own file (or just import one from the menu)
+const DEFAULT_MODEL = "models/lily_flower.glb";
+
 let model = null;
 const loader = new GLTFLoader();
 
-loader.load(
-    // CHANGE THIS 
-    "models/lily_flower.glb",
-    // ^^^^^^^^^^^
-    // make sure u hv correct filepath and ur glb or other model
-    (gltf) => {
-        model = gltf.scene;
-        applyModel();
-        scene.add(model);
-        console.log("flower loaded");
-    },
-    (xhr) => {
-        console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
-    },
-    (error) => {
-        console.error("GLTF load error:", error);
-    },
-);
+// swaps in a freshly loaded gltf scene, throwing away whatever was there before.
+// we wrap it in a group and remember its bounds so applyModel can normalise it —
+// random glbs come in at any scale, this makes them all land in roughly the same spot.
+function setModel(object, name) {
+    if (model) {
+        scene.remove(model);
+        model.traverse((o) => {
+            o.geometry?.dispose();
+            const mats = Array.isArray(o.material) ? o.material : [o.material];
+            mats.forEach((m) => m?.dispose());
+        });
+    }
+
+    const box = new THREE.Box3().setFromObject(object);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+
+    model = new THREE.Group();
+    model.userData.maxDim = Math.max(size.x, size.y, size.z) || 1;
+    // shift so the model is centred on x/z and its feet are on y=0 (before scaling)
+    model.userData.baseOffset = new THREE.Vector3(-center.x, -box.min.y, -center.z);
+    model.userData.name = name;
+    model.add(object);
+    scene.add(model);
+    applyModel();
+
+    menu.modelFile?.(name);
+    console.log("model loaded:", name);
+}
+
+function loadModelFromUrl(url, name = url.split("/").pop()) {
+    loader.load(
+        url,
+        (gltf) => setModel(gltf.scene, name),
+        (xhr) => {
+            if (xhr.total) console.log(((xhr.loaded / xhr.total) * 100).toFixed(0) + "% loaded");
+        },
+        (error) => console.error("GLTF load error:", error),
+    );
+}
+
+// .glb (or a .gltf with everything embedded) picked from disk
+function loadModelFromFile(file) {
+    if (!file) return;
+    file.arrayBuffer().then((buf) => {
+        loader.parse(
+            buf,
+            "",
+            (gltf) => setModel(gltf.scene, file.name),
+            (error) => {
+                console.error("GLTF parse error:", error);
+                alert(`couldn't read ${file.name} — make sure it's a .glb (or a .gltf with embedded buffers/textures)`);
+            },
+        );
+    });
+}
+
+loadModelFromUrl(DEFAULT_MODEL);
+
+// drag a file anywhere onto the page to load it
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => {
+    e.preventDefault();
+    loadModelFromFile(e.dataTransfer.files[0]);
+});
 
 const asciiCanvas = document.getElementById("asciiCanvas");
 const ctx = asciiCanvas.getContext("2d");
@@ -270,13 +333,14 @@ animate();
 window.addEventListener("resize", resizeScene);
 
 // ---------- menu ----------
+// key -> fn that pushes S[key] back into its input (used by reset, and by setModel to show the file name)
+const menu = {};
+
 // builds the controls from SCHEMA into #controls. skipped entirely if the element isn't there.
 function buildMenu() {
     const root = document.getElementById("controls");
     if (!root) return;
-
-    // key -> fn that pushes S[key] back into its input (used by reset)
-    const syncers = {};
+    const syncers = menu;
 
     for (const group of SCHEMA) {
         const g = document.createElement("div");
@@ -334,6 +398,26 @@ function buildMenu() {
                 const input = el.querySelector("select");
                 input.addEventListener("change", () => commit(input.value));
                 syncers[f.key] = () => { input.value = S[f.key]; };
+            } else if (f.kind === "file") {
+                el.innerHTML = `
+                    <div class="row"><label for="${id}">${f.label}</label><span class="value"></span></div>
+                    <div class="file-row">
+                        <button type="button" class="link" id="${id}">import .glb</button>
+                        <button type="button" class="link" id="${id}-default">default model</button>
+                    </div>
+                    <input type="file" id="${id}-input" accept="${f.accept}" hidden>`;
+                const input = el.querySelector("input");
+                const value = el.querySelector(".value");
+                el.querySelector(`#${id}`).addEventListener("click", () => input.click());
+                el.querySelector(`#${id}-default`).addEventListener("click", () => loadModelFromUrl(DEFAULT_MODEL));
+                input.addEventListener("change", () => {
+                    loadModelFromFile(input.files[0]);
+                    input.value = "";
+                });
+                // called with a name by setModel; with nothing (reset) it just re-shows the current one
+                syncers[f.key] = (name) => {
+                    value.textContent = name ?? model?.userData.name ?? "loading…";
+                };
             } else if (f.kind === "check") {
                 el.innerHTML = `
                     <label class="row" for="${id}"><span>${f.label}</span><input type="checkbox" id="${id}"></label>`;

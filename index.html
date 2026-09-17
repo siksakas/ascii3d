@@ -190,6 +190,19 @@
     }
     input[type="checkbox"]:checked { background: var(--fg); border-color: var(--fg); }
 
+    /* text-link buttons (model import) */
+    .file-row { display: flex; gap: 20px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+    button.link {
+      background: none;
+      border: 0;
+      color: var(--fg);
+      font: inherit;
+      cursor: pointer;
+      padding: 0;
+    }
+    button.link::after { content: " →"; color: var(--muted); }
+    button.link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
     /* footer */
     #panel footer {
       margin-top: auto;
@@ -249,7 +262,7 @@
     </footer>
   </aside>
 
-  <div id="stage">
+  <div id="stage" title="drop a .glb here">
     <canvas id="threeCanvas"></canvas>
     <canvas id="asciiCanvas"></canvas>
   </div>
